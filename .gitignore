@@ -1,0 +1,10 @@
+.vscode/
+_INFO/
+image/
+servers/
+NOTAS.md
+servercreator
+build.sh
+TODO
+config.ini
+src/fyne-cross/
