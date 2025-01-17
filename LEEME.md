@@ -46,7 +46,7 @@ Los archivos con extesión `.sh` son de Linux y los `.bat` de Windows.
 
 ## Caveats and gotchas
 
-**El servidor crashea si se le activa cualquier mod**. De momento sólo funciona sin mods. Estoy trabajando en ello y espero encontrar una solución pronto.
+**El servidor crashea con algunos mods como Animalia o 3DArmor**. Estoy trabajando en ello y espero encontrar una solución pronto.
 
 La ruta por defecto que busca para los mapas es `~/.minetest`. Si tus ficheros no están en ese directorio, crea un fichero `config.ini` en el directorio de la aplicación con el siguiente contenido:
 ```ini
