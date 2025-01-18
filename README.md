@@ -46,8 +46,6 @@ Files with the `.sh` extension are for Linux, and `.bat` are for Windows.
 
 ## Caveats and Gotchas
 
-**The server crashes with some mods like Animalia or 3DArmor**. I’m working on it and hope to find a solution soon.
-
 The default path for maps is `~/.minetest`. If your files are not in this directory, create a `config.ini` file in the application directory with the following content:
 ```ini
 data_path = /your/path/to/data

@@ -1,6 +1,6 @@
 .vscode/
 _INFO/
-image/
+docker-image/
 servers/
 NOTAS.md
 servercreator
@@ -9,3 +9,8 @@ TODO
 config.ini
 src/fyne-cross/
 src/Icon.png
+backup.sh
+restore.sh
+mk.sh
+CHANGELOG.md
+
