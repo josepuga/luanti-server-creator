@@ -7,7 +7,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
-const TEXT_SIZE = 18
+const TEXT_SIZE = 20
 
 type CustomTheme struct {
     fyne.Theme

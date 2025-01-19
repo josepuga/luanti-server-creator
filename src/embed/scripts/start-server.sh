@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Starts the Server
-# By José Puga 2025.
+# By José Puga 2025. GPL3
 
 docker run -it --rm -d \
     --net host \
     -p 30000:30000 \
     --name "%server%" \
     -v "./data:/root/.minetest:Z" \
-    docker.io/josepuga/luanti-server:latest
+    docker.io/josepuga/luanti-server:%tag%

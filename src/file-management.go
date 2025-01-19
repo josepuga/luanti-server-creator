@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -35,7 +36,7 @@ func copy(src, dst string) error {
 	return nil
 }
 
-// TODO: Implement concurrency...
+// Without concurrency (legacy)
 func copyDir(src, dst string) error {
 
 	//mkdir
@@ -49,21 +50,21 @@ func copyDir(src, dst string) error {
 			return err
 		}
 
-		// Crear la ruta correspondiente en el destino
+		// Create destination path
 		relPath, err := filepath.Rel(src, path)
 		if err != nil {
 			return err
 		}
 		destPath := filepath.Join(dst, relPath)
 
-		// Si es un directorio, crearlo en el destino
+		// If directory, create it in destination
 		if info.IsDir() {
 			if err := os.MkdirAll(destPath, info.Mode()); err != nil {
 				return err
 			}
 			return nil
 		}
-		// Si es un archivo, copiarlo
+		// If file, copy it
 		return copy(path, destPath)
 	})
 }
@@ -131,4 +132,13 @@ func saveToFile(dst string, data []byte) error {
 
 	_, err = file.Write(data)
 	return err
+}
+
+// Thanks SO:
+// https://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
+func fileExists(fileName string) bool {
+	if _, err := os.Stat(fileName); errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	return true
 }

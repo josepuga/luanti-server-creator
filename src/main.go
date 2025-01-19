@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -21,12 +23,15 @@ import (
 
 var version string = "<unknow>"
 
+const CONFIG_FILE = "./config.ini"
+
 type config struct {
 	srcDir             string
 	destDir            string
 	destWorldDir       string
 	destModsDir        string
 	destGamesDir       string
+	serversPath        string
 	worldName          string
 	worldDir           string
 	gameID             string
@@ -43,24 +48,42 @@ func main() {
 	myApp.Settings().SetTheme(&CustomTheme{})
 	myWindow := myApp.NewWindow("Luanti Server Creator " + version)
 
-	myWindow.Resize(fyne.NewSize(400, 400))
+	myWindow.Resize(fyne.NewSize(400, 550))
 
+    // Create config.ini file with default values if not exists
+    if ! fileExists(CONFIG_FILE) {
+        contentBytes, err := othersFS.ReadFile("embed/others/config.ini")
+        if err != nil {
+            fmt.Fprintln(os.Stderr, "Error reading embeded file config.ini, using default values")
+        } else {
+			if err := saveToFile(CONFIG_FILE, contentBytes); err != nil {
+				fmt.Fprintln(os.Stderr, "Error creating config.ini, using default values")
+			}
+        }
+    }
+    
 	//
 	// Get Luanti data path. Exit if not exists
 	//
 	homeDir, _ := os.UserHomeDir()
 	cfg.srcDir = filepath.Join(homeDir, ".minetest")
-    // Try the config file
-    ini := goini.NewIni()
-    if err := ini.LoadFromFile("config.ini"); err == nil {
-        cfg.srcDir = ini.GetString("", "data_path", cfg.srcDir)
-    }
+	// Try the config file
+	ini := goini.NewIni()
+	if err := ini.LoadFromFile("config.ini"); err == nil {
+		cfg.srcDir = ini.GetString("", "data_path", cfg.srcDir)
+        // Expand ~ if present
+        cfg.srcDir = expandPath(cfg.srcDir)
+	}
 	if !isDir(cfg.srcDir) {
 		if !isDir(cfg.srcDir) {
 			fmt.Fprintln(os.Stderr, "Error Luanti data directory does not exists", cfg.srcDir)
 			return
 		}
 	}
+
+	// Servers location
+	cfg.serversPath = ini.GetString("", "servers_path", "./servers")
+    cfg.serversPath = expandPath(cfg.serversPath)
 
 	//
 	// Gather a map [World Name]Word Directory. Exit if no worlds or error
@@ -82,6 +105,20 @@ func main() {
 	worldCombo := widget.NewSelect(worlds, nil)
 
 	//
+	// Server Tags Image ComboBox
+	//
+
+	// Server Tags Images availables. Read from Docker Hub API
+	serverTagsCombo := widget.NewSelect([]string{"latest"}, nil)
+	if imageTags, err := getDockerTags("josepuga", "luanti-server"); err != nil {
+		// Not an importarn error
+		fmt.Fprintln(os.Stderr, "Error fetching server tags from docker.io. Only latest available")
+	} else {
+		serverTagsCombo.Options = imageTags
+	}
+	serverTagsCombo.Selected = "latest"
+
+	//
 	// Multiline, minetest.conf
 	//
 	confMultiline := widget.NewMultiLineEntry()
@@ -98,19 +135,20 @@ func main() {
 	// Button Generate
 	//
 	// Must be self referenciated to disable it.
-	var generateButton *widget.Button
-	generateButton = widget.NewButton("Generate files...", func() {
+	var createServerButton *widget.Button
+	createServerButton = widget.NewButton("Create Server!", func() {
 
-		if worldCombo.Selected == "" {
-			return
+        if worldCombo.Selected == "" {
+            return
 		}
-		generateButton.Disable()
+        start := time.Now()
+		createServerButton.Disable()
 		errorCount := 0
 
 		cfg.worldName = worldCombo.Selected
 		cfg.worldDir = cfg.worldNameDirectory[cfg.worldName]
 		cfg.worldMtFile = filepath.Join(cfg.srcDir, "worlds", cfg.worldDir, "world.mt")
-		cfg.destDir = filepath.Join("servers", cfg.worldDir)
+		cfg.destDir = filepath.Join(cfg.serversPath, cfg.worldDir)
 		cfg.destWorldDir = filepath.Join(cfg.destDir, "data/worlds/world")
 		cfg.destModsDir = filepath.Join(cfg.destWorldDir, "worldmods")
 		cfg.destGamesDir = filepath.Join(cfg.destDir, "data/games")
@@ -131,7 +169,7 @@ func main() {
 			err := deleteDir(cfg.destDir)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error deleting", cfg.destDir, err.Error())
-                errorCount++
+				errorCount++
 			}
 		}
 
@@ -148,25 +186,30 @@ func main() {
 		// Active mods
 		if cfg.worldModsDir, err = worldMtGetActiveModDirs(); err != nil {
 			fmt.Fprintln(os.Stderr, "Error getting mods location")
-            errorCount++
+			errorCount++
 		}
 		for _, p := range cfg.worldModsDir {
-            srcDir := filepath.Join(cfg.srcDir, p)
-            dstDir := filepath.Join(cfg.destModsDir, p)
-            partToRemove := filepath.Join("mods")
-            // Not in world/worldmods/mods/<my mod> --> world/worldmods/<my mod>
-            dstDir = removePartOfPath(dstDir, partToRemove)
-            //fmt.Printf("%s -> %s\n", srcDir, dstDir)
+			srcDir := filepath.Join(cfg.srcDir, p)
+			dstDir := filepath.Join(cfg.destModsDir, p)
+			partToRemove := filepath.Join("mods")
+			// Not in world/worldmods/mods/<my mod> --> world/worldmods/<my mod>
+			dstDir = removePartOfPath(dstDir, partToRemove)
+			//fmt.Printf("%s -> %s\n", srcDir, dstDir)
 			paths[srcDir] = dstDir
 		}
 
 		fmt.Println("Copying many directories, this may take a while...")
+        var wg sync.WaitGroup
 		for src, dst := range paths {
-			fmt.Printf("Copying %s -> %s\n", src, dst)
-			err := copyDir(src, dst)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Error copying ", src, "to", dst)
-			}
+            wg.Add(1)
+			//fmt.Printf("Copying %s -> %s\n", src, dst)
+            go func(src, dst string) {
+                defer wg.Done()
+                err := copyDir(src, dst)
+                if err != nil {
+                    fmt.Fprintln(os.Stderr, "Error copying ", src, "to", dst)
+                }
+            }(src, dst)
 		}
 
 		//
@@ -188,11 +231,21 @@ func main() {
 				errorCount++
 				continue
 			}
+
+			// Server name (sanitized)
 			contentString := strings.ReplaceAll(
 				string(contentBytes),
 				"%server%",
 				"server-"+sanitize(cfg.worldDir),
 			)
+
+			// Image tags
+			contentString = strings.ReplaceAll(
+				contentString,
+				"%tag%",
+				serverTagsCombo.Selected,
+			)
+
 			scriptDestFile := filepath.Join(cfg.destDir, scriptFile)
 			if err := saveToFile(scriptDestFile, []byte(contentString)); err != nil {
 				fmt.Fprintln(os.Stderr, "Error creating system file", scriptFile)
@@ -200,7 +253,7 @@ func main() {
 				continue
 			}
 			// Check .sh extension for +x
-			// No error handle
+			// No errors handle
 			if filepath.Ext(scriptDestFile) == ".sh" {
 				os.Chmod(scriptDestFile, 0744)
 			}
@@ -230,8 +283,9 @@ func main() {
 				myWindow,
 			)
 		}
-		fmt.Println("Done!")
-		generateButton.Enable()
+        elapse := time.Since(start)
+		fmt.Println("Done!. Server created in", elapse)
+		createServerButton.Enable()
 	})
 
 	// Container with all the elements.
@@ -240,9 +294,12 @@ func main() {
 			widget.NewLabel("Select a World:"),
 			worldCombo,
 			widget.NewSeparator(),
+			widget.NewLabel("Server version:"),
+			serverTagsCombo,
+			widget.NewSeparator(),
 			widget.NewLabel("minetest.conf:"),
 		), // Top
-		generateButton, // Bottom
+		createServerButton, // Bottom
 		nil,            // Left
 		nil,            //Right
 		confMultiline,  // Center
@@ -289,6 +346,16 @@ func sanitize(s string) string {
 	return re.ReplaceAllString(s, "_")
 }
 
+func expandPath(path string) string {
+    if strings.HasPrefix(path, "~") {
+        home, err := os.UserHomeDir()
+        if err != nil {
+            return path
+        }
+        return filepath.Join(home, strings.TrimPrefix(path, "~"))
+    }
+    return path
+}
 
 func removePartOfPath(fullPath, partToRemove string) string {
 	var separator string

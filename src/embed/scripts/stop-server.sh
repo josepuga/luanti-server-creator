@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Server graceful shutdown.
-# By José Puga 2025.
+# By José Puga 2025. GPL3
 
 docker exec -it "%server%" \
-    sh -c "kill -SIGTERM \$(pgrep minetest)"
+    bash -c "kill -SIGTERM \$(pgrep luanti)"
