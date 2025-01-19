@@ -5,7 +5,7 @@ servers/
 backups/
 
 NOTAS.md
-servercreator
+./servercreator
 build.sh
 TODO
 config.ini
